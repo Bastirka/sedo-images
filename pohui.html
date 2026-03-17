@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Photo URL Uploader</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #111;
+      color: #fff;
+    }
+
+    h1 {
+      margin-bottom: 10px;
+    }
+
+    .box {
+      background: #1b1b1b;
+      border: 1px solid #333;
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    input[type="file"] {
+      margin: 10px 0 20px;
+    }
+
+    button {
+      background: #6d5cff;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 10px;
+      cursor: pointer;
+      margin-right: 10px;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+
+    .result {
+      margin-top: 20px;
+    }
+
+    .item {
+      background: #181818;
+      border: 1px solid #333;
+      padding: 12px;
+      border-radius: 10px;
+      margin-bottom: 12px;
+      word-break: break-all;
+    }
+
+    .preview {
+      max-width: 120px;
+      max-height: 120px;
+      display: block;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      border: 1px solid #333;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 180px;
+      background: #0e0e0e;
+      color: #fff;
+      border: 1px solid #333;
+      border-radius: 10px;
+      padding: 12px;
+      margin-top: 10px;
+    }
+
+    .muted {
+      color: #aaa;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Photo URL Uploader</h1>
+  <p class="muted">Upload photos and copy public URLs for Google Sheets.</p>
+
+  <div class="box">
+    <input type="file" id="fileInput" multiple accept="image/*" />
+    <br />
+    <button id="uploadBtn">Upload</button>
+    <button id="copyAllBtn">Copy all URLs</button>
+    <button id="clearBtn">Clear list</button>
+  </div>
+
+  <div class="box">
+    <h3>All URLs</h3>
+    <textarea id="allUrls" readonly placeholder="Uploaded image URLs will appear here..."></textarea>
+  </div>
+
+  <div class="box result">
+    <h3>Uploaded files</h3>
+    <div id="results"></div>
+  </div>
+
+  <script>
+    // ==== INSERT YOUR VALUES HERE ====
+    const SUPABASE_URL = "https://YOUR_PROJECT_ID.supabase.co";
+    const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+    const BUCKET = "photos";
+    // ================================
+
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const fileInput = document.getElementById("fileInput");
+    const uploadBtn = document.getElementById("uploadBtn");
+    const copyAllBtn = document.getElementById("copyAllBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const results = document.getElementById("results");
+    const allUrls = document.getElementById("allUrls");
+
+    let uploadedUrls = [];
+
+    function makeSafeFileName(name) {
+      const ext = name.includes(".") ? name.substring(name.lastIndexOf(".")) : "";
+      const base = name.replace(/\.[^/.]+$/, "");
+      const safeBase = base
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      return `${safeBase || "image"}-${Date.now()}-${Math.floor(Math.random() * 10000)}${ext}`;
+    }
+
+    function refreshTextarea() {
+      allUrls.value = uploadedUrls.join("\n");
+    }
+
+    function addResultCard(url, fileName) {
+      const div = document.createElement("div");
+      div.className = "item";
+
+      div.innerHTML = `
+        <img src="${url}" class="preview" alt="${fileName}" />
+        <strong>${fileName}</strong><br><br>
+        <a href="${url}" target="_blank" style="color:#8ab4ff;">${url}</a><br><br>
+        <button onclick="navigator.clipboard.writeText('${url.replace(/'/g, "\\'")}')">Copy URL</button>
+      `;
+
+      results.prepend(div);
+    }
+
+    uploadBtn.addEventListener("click", async () => {
+      const files = fileInput.files;
+
+      if (!files.length) {
+        alert("Choose at least one image.");
+        return;
+      }
+
+      uploadBtn.disabled = true;
+      uploadBtn.textContent = "Uploading...";
+
+      for (const file of files) {
+        const fileName = makeSafeFileName(file.name);
+        const path = `uploads/${fileName}`;
+
+        const { error: uploadError } = await supabaseClient
+          .storage
+          .from(BUCKET)
+          .upload(path, file, {
+            cacheControl: "3600",
+            upsert: false
+          });
+
+        if (uploadError) {
+          console.error(uploadError);
+          alert(`Upload failed for ${file.name}: ${uploadError.message}`);
+          continue;
+        }
+
+        const { data } = supabaseClient
+          .storage
+          .from(BUCKET)
+          .getPublicUrl(path);
+
+        const publicUrl = data.publicUrl;
+
+        uploadedUrls.push(publicUrl);
+        refreshTextarea();
+        addResultCard(publicUrl, file.name);
+      }
+
+      fileInput.value = "";
+      uploadBtn.disabled = false;
+      uploadBtn.textContent = "Upload";
+    });
+
+    copyAllBtn.addEventListener("click", async () => {
+      if (!uploadedUrls.length) {
+        alert("No URLs yet.");
+        return;
+      }
+      await navigator.clipboard.writeText(uploadedUrls.join("\n"));
+      alert("All URLs copied.");
+    });
+
+    clearBtn.addEventListener("click", () => {
+      uploadedUrls = [];
+      refreshTextarea();
+      results.innerHTML = "";
+    });
+  </script>
+</body>
+</html>
