@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Photo URL Uploader</title>
+  <title>Image Drop Uploader</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     body {
@@ -16,160 +16,170 @@
     }
 
     h1 {
-      margin-bottom: 10px;
+      margin-bottom: 8px;
     }
 
-    .box {
-      background: #1b1b1b;
-      border: 1px solid #333;
-      border-radius: 14px;
-      padding: 20px;
+    p {
+      color: #bbb;
       margin-bottom: 20px;
     }
 
-    input[type="file"] {
-      margin: 10px 0 20px;
+    .dropzone {
+      border: 2px dashed #666;
+      border-radius: 16px;
+      padding: 50px 20px;
+      text-align: center;
+      background: #1a1a1a;
+      transition: 0.2s;
+      margin-bottom: 20px;
+    }
+
+    .dropzone.dragover {
+      border-color: #8b5cf6;
+      background: #222;
+    }
+
+    .hidden {
+      display: none;
     }
 
     button {
-      background: #6d5cff;
+      background: #8b5cf6;
       color: white;
       border: none;
-      padding: 10px 16px;
+      padding: 10px 14px;
       border-radius: 10px;
       cursor: pointer;
       margin-right: 10px;
     }
 
-    button:hover {
-      opacity: 0.9;
-    }
-
-    .result {
-      margin-top: 20px;
+    textarea {
+      width: 100%;
+      min-height: 160px;
+      background: #0d0d0d;
+      color: white;
+      border: 1px solid #333;
+      border-radius: 12px;
+      padding: 12px;
+      margin: 20px 0;
     }
 
     .item {
-      background: #181818;
+      background: #1a1a1a;
       border: 1px solid #333;
+      border-radius: 12px;
       padding: 12px;
-      border-radius: 10px;
       margin-bottom: 12px;
       word-break: break-all;
     }
 
     .preview {
-      max-width: 120px;
-      max-height: 120px;
+      max-width: 140px;
+      max-height: 140px;
       display: block;
-      margin-bottom: 10px;
-      border-radius: 8px;
-      border: 1px solid #333;
-    }
-
-    textarea {
-      width: 100%;
-      min-height: 180px;
-      background: #0e0e0e;
-      color: #fff;
-      border: 1px solid #333;
       border-radius: 10px;
-      padding: 12px;
-      margin-top: 10px;
+      margin-bottom: 10px;
     }
 
-    .muted {
+    a {
+      color: #93c5fd;
+    }
+
+    .status {
       color: #aaa;
-      font-size: 14px;
+      margin-bottom: 14px;
     }
   </style>
 </head>
 <body>
-  <h1>Photo URL Uploader</h1>
-  <p class="muted">Upload photos and copy public URLs for Google Sheets.</p>
+  <h1>Drop images here</h1>
+  <p>Iemet bildes, un dabūsi gatavus linkus.</p>
 
-  <div class="box">
-    <input type="file" id="fileInput" multiple accept="image/*" />
-    <br />
-    <button id="uploadBtn">Upload</button>
-    <button id="copyAllBtn">Copy all URLs</button>
-    <button id="clearBtn">Clear list</button>
+  <div id="dropzone" class="dropzone">
+    <div>Drag & drop images here</div>
+    <div style="margin:12px 0;">or</div>
+    <button id="chooseBtn" type="button">Choose files</button>
+    <input id="fileInput" class="hidden" type="file" accept="image/*" multiple />
   </div>
 
-  <div class="box">
-    <h3>All URLs</h3>
-    <textarea id="allUrls" readonly placeholder="Uploaded image URLs will appear here..."></textarea>
-  </div>
+  <div class="status" id="status">Ready</div>
 
-  <div class="box result">
-    <h3>Uploaded files</h3>
-    <div id="results"></div>
-  </div>
+  <button id="copyAllBtn" type="button">Copy all links</button>
+
+  <textarea id="allLinks" readonly placeholder="Image links will appear here..."></textarea>
+
+  <div id="results"></div>
 
   <script>
-    // ==== INSERT YOUR VALUES HERE ====
-    const SUPABASE_URL = "https://YOUR_PROJECT_ID.supabase.co";
+    const SUPABASE_URL = "YOUR_SUPABASE_URL";
     const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
-    const BUCKET = "photos";
-    // ================================
+    const BUCKET_NAME = "photos";
 
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+    const dropzone = document.getElementById("dropzone");
+    const chooseBtn = document.getElementById("chooseBtn");
     const fileInput = document.getElementById("fileInput");
-    const uploadBtn = document.getElementById("uploadBtn");
+    const statusEl = document.getElementById("status");
+    const allLinksEl = document.getElementById("allLinks");
+    const resultsEl = document.getElementById("results");
     const copyAllBtn = document.getElementById("copyAllBtn");
-    const clearBtn = document.getElementById("clearBtn");
-    const results = document.getElementById("results");
-    const allUrls = document.getElementById("allUrls");
 
-    let uploadedUrls = [];
+    let links = [];
 
-    function makeSafeFileName(name) {
+    function setStatus(text) {
+      statusEl.textContent = text;
+    }
+
+    function updateLinksBox() {
+      allLinksEl.value = links.join("\n");
+    }
+
+    function safeFileName(name) {
       const ext = name.includes(".") ? name.substring(name.lastIndexOf(".")) : "";
       const base = name.replace(/\.[^/.]+$/, "");
-      const safeBase = base
+      const cleaned = base
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "");
-      return `${safeBase || "image"}-${Date.now()}-${Math.floor(Math.random() * 10000)}${ext}`;
+      return `${cleaned || "image"}-${Date.now()}-${Math.floor(Math.random() * 100000)}${ext}`;
     }
 
-    function refreshTextarea() {
-      allUrls.value = uploadedUrls.join("\n");
-    }
-
-    function addResultCard(url, fileName) {
-      const div = document.createElement("div");
-      div.className = "item";
-
-      div.innerHTML = `
-        <img src="${url}" class="preview" alt="${fileName}" />
-        <strong>${fileName}</strong><br><br>
-        <a href="${url}" target="_blank" style="color:#8ab4ff;">${url}</a><br><br>
-        <button onclick="navigator.clipboard.writeText('${url.replace(/'/g, "\\'")}')">Copy URL</button>
+    function addResultCard(originalName, url) {
+      const item = document.createElement("div");
+      item.className = "item";
+      item.innerHTML = `
+        <img class="preview" src="${url}" alt="${originalName}">
+        <div><strong>${originalName}</strong></div>
+        <div style="margin:8px 0;">
+          <a href="${url}" target="_blank">${url}</a>
+        </div>
+        <button type="button">Copy link</button>
       `;
-
-      results.prepend(div);
+      item.querySelector("button").addEventListener("click", async () => {
+        await navigator.clipboard.writeText(url);
+        alert("Link copied");
+      });
+      resultsEl.prepend(item);
     }
 
-    uploadBtn.addEventListener("click", async () => {
-      const files = fileInput.files;
+    async function uploadFiles(fileList) {
+      const files = [...fileList].filter(file => file.type.startsWith("image/"));
 
       if (!files.length) {
-        alert("Choose at least one image.");
+        alert("Please choose image files only.");
         return;
       }
 
-      uploadBtn.disabled = true;
-      uploadBtn.textContent = "Uploading...";
+      setStatus(`Uploading ${files.length} file(s)...`);
 
       for (const file of files) {
-        const fileName = makeSafeFileName(file.name);
-        const path = `uploads/${fileName}`;
+        const newName = safeFileName(file.name);
+        const path = `uploads/${newName}`;
 
         const { error: uploadError } = await supabaseClient
           .storage
-          .from(BUCKET)
+          .from(BUCKET_NAME)
           .upload(path, file, {
             cacheControl: "3600",
             upsert: false
@@ -177,40 +187,56 @@
 
         if (uploadError) {
           console.error(uploadError);
-          alert(`Upload failed for ${file.name}: ${uploadError.message}`);
+          setStatus(`Failed: ${file.name}`);
           continue;
         }
 
         const { data } = supabaseClient
           .storage
-          .from(BUCKET)
+          .from(BUCKET_NAME)
           .getPublicUrl(path);
 
         const publicUrl = data.publicUrl;
 
-        uploadedUrls.push(publicUrl);
-        refreshTextarea();
-        addResultCard(publicUrl, file.name);
+        links.push(publicUrl);
+        updateLinksBox();
+        addResultCard(file.name, publicUrl);
       }
 
+      setStatus("Done");
+    }
+
+    chooseBtn.addEventListener("click", () => {
+      fileInput.click();
+    });
+
+    fileInput.addEventListener("change", async (e) => {
+      await uploadFiles(e.target.files);
       fileInput.value = "";
-      uploadBtn.disabled = false;
-      uploadBtn.textContent = "Upload";
+    });
+
+    dropzone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropzone.classList.add("dragover");
+    });
+
+    dropzone.addEventListener("dragleave", () => {
+      dropzone.classList.remove("dragover");
+    });
+
+    dropzone.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      dropzone.classList.remove("dragover");
+      await uploadFiles(e.dataTransfer.files);
     });
 
     copyAllBtn.addEventListener("click", async () => {
-      if (!uploadedUrls.length) {
-        alert("No URLs yet.");
+      if (!links.length) {
+        alert("No links yet.");
         return;
       }
-      await navigator.clipboard.writeText(uploadedUrls.join("\n"));
-      alert("All URLs copied.");
-    });
-
-    clearBtn.addEventListener("click", () => {
-      uploadedUrls = [];
-      refreshTextarea();
-      results.innerHTML = "";
+      await navigator.clipboard.writeText(links.join("\n"));
+      alert("All links copied");
     });
   </script>
 </body>
