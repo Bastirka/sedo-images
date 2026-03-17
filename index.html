@@ -3,25 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Image Drop Uploader</title>
+  <title>Drop Images</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
+      background: #111;
+      color: #fff;
       max-width: 900px;
       margin: 40px auto;
       padding: 20px;
-      background: #111;
-      color: #fff;
     }
 
     h1 {
-      margin-bottom: 8px;
-    }
-
-    p {
-      color: #bbb;
-      margin-bottom: 20px;
+      margin-bottom: 10px;
     }
 
     .dropzone {
@@ -30,38 +25,35 @@
       padding: 50px 20px;
       text-align: center;
       background: #1a1a1a;
+      cursor: pointer;
       transition: 0.2s;
       margin-bottom: 20px;
     }
 
+    .dropzone:hover,
     .dropzone.dragover {
       border-color: #8b5cf6;
-      background: #222;
+      background: #202020;
     }
 
-    .hidden {
+    #fileInput {
       display: none;
     }
 
-    button {
-      background: #8b5cf6;
-      color: white;
-      border: none;
-      padding: 10px 14px;
-      border-radius: 10px;
-      cursor: pointer;
-      margin-right: 10px;
+    .status {
+      color: #bbb;
+      margin-bottom: 16px;
     }
 
     textarea {
       width: 100%;
-      min-height: 160px;
+      min-height: 150px;
       background: #0d0d0d;
-      color: white;
+      color: #fff;
       border: 1px solid #333;
       border-radius: 12px;
       padding: 12px;
-      margin: 20px 0;
+      margin-bottom: 20px;
     }
 
     .item {
@@ -81,132 +73,121 @@
       margin-bottom: 10px;
     }
 
-    a {
-      color: #93c5fd;
+    button {
+      background: #8b5cf6;
+      color: white;
+      border: none;
+      padding: 10px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      margin-top: 8px;
     }
 
-    .status {
-      color: #aaa;
-      margin-bottom: 14px;
+    a {
+      color: #93c5fd;
     }
   </style>
 </head>
 <body>
-  <h1>Drop images here</h1>
-  <p>Iemet bildes, un dabūsi gatavus linkus.</p>
+  <h1>Image uploader</h1>
 
   <div id="dropzone" class="dropzone">
-    <div>Drag & drop images here</div>
-    <div style="margin:12px 0;">or</div>
-    <button id="chooseBtn" type="button">Choose files</button>
-    <input id="fileInput" class="hidden" type="file" accept="image/*" multiple />
+    Click here or drop images here
   </div>
 
-  <div class="status" id="status">Ready</div>
+  <input id="fileInput" type="file" accept="image/*" multiple />
+
+  <div id="status" class="status">Ready</div>
 
   <button id="copyAllBtn" type="button">Copy all links</button>
 
-  <textarea id="allLinks" readonly placeholder="Image links will appear here..."></textarea>
+  <textarea id="allLinks" readonly placeholder="Links will appear here..."></textarea>
 
   <div id="results"></div>
 
   <script>
     const SUPABASE_URL = "YOUR_SUPABASE_URL";
     const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
-    const BUCKET_NAME = "photos";
+    const BUCKET = "photos";
 
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const dropzone = document.getElementById("dropzone");
-    const chooseBtn = document.getElementById("chooseBtn");
     const fileInput = document.getElementById("fileInput");
     const statusEl = document.getElementById("status");
     const allLinksEl = document.getElementById("allLinks");
     const resultsEl = document.getElementById("results");
     const copyAllBtn = document.getElementById("copyAllBtn");
 
-    let links = [];
+    let allLinks = [];
 
     function setStatus(text) {
       statusEl.textContent = text;
     }
 
-    function updateLinksBox() {
-      allLinksEl.value = links.join("\n");
-    }
-
     function safeFileName(name) {
-      const ext = name.includes(".") ? name.substring(name.lastIndexOf(".")) : "";
+      const ext = name.includes(".") ? name.slice(name.lastIndexOf(".")) : "";
       const base = name.replace(/\.[^/.]+$/, "");
-      const cleaned = base
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "");
-      return `${cleaned || "image"}-${Date.now()}-${Math.floor(Math.random() * 100000)}${ext}`;
+      const clean = base.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      return `${clean || "image"}-${Date.now()}-${Math.floor(Math.random() * 10000)}${ext}`;
     }
 
-    function addResultCard(originalName, url) {
-      const item = document.createElement("div");
-      item.className = "item";
-      item.innerHTML = `
-        <img class="preview" src="${url}" alt="${originalName}">
-        <div><strong>${originalName}</strong></div>
-        <div style="margin:8px 0;">
-          <a href="${url}" target="_blank">${url}</a>
-        </div>
+    function refreshLinks() {
+      allLinksEl.value = allLinks.join("\n");
+    }
+
+    function addCard(name, url) {
+      const div = document.createElement("div");
+      div.className = "item";
+      div.innerHTML = `
+        <img src="${url}" class="preview" alt="">
+        <div><strong>${name}</strong></div>
+        <div style="margin:8px 0;"><a href="${url}" target="_blank">${url}</a></div>
         <button type="button">Copy link</button>
       `;
-      item.querySelector("button").addEventListener("click", async () => {
+      div.querySelector("button").addEventListener("click", async () => {
         await navigator.clipboard.writeText(url);
-        alert("Link copied");
+        alert("Copied");
       });
-      resultsEl.prepend(item);
+      resultsEl.prepend(div);
     }
 
     async function uploadFiles(fileList) {
-      const files = [...fileList].filter(file => file.type.startsWith("image/"));
+      const files = [...fileList].filter(f => f.type.startsWith("image/"));
 
       if (!files.length) {
-        alert("Please choose image files only.");
+        alert("Choose image files");
         return;
       }
 
       setStatus(`Uploading ${files.length} file(s)...`);
 
       for (const file of files) {
-        const newName = safeFileName(file.name);
-        const path = `uploads/${newName}`;
+        const fileName = safeFileName(file.name);
+        const path = `uploads/${fileName}`;
 
-        const { error: uploadError } = await supabaseClient
-          .storage
-          .from(BUCKET_NAME)
-          .upload(path, file, {
-            cacheControl: "3600",
-            upsert: false
-          });
+        const { error } = await supabaseClient.storage
+          .from(BUCKET)
+          .upload(path, file, { cacheControl: "3600", upsert: false });
 
-        if (uploadError) {
-          console.error(uploadError);
+        if (error) {
+          console.error(error);
           setStatus(`Failed: ${file.name}`);
           continue;
         }
 
-        const { data } = supabaseClient
-          .storage
-          .from(BUCKET_NAME)
-          .getPublicUrl(path);
-
+        const { data } = supabaseClient.storage.from(BUCKET).getPublicUrl(path);
         const publicUrl = data.publicUrl;
 
-        links.push(publicUrl);
-        updateLinksBox();
-        addResultCard(file.name, publicUrl);
+        allLinks.push(publicUrl);
+        refreshLinks();
+        addCard(file.name, publicUrl);
       }
 
       setStatus("Done");
     }
 
-    chooseBtn.addEventListener("click", () => {
+    dropzone.addEventListener("click", () => {
       fileInput.click();
     });
 
@@ -231,11 +212,11 @@
     });
 
     copyAllBtn.addEventListener("click", async () => {
-      if (!links.length) {
-        alert("No links yet.");
+      if (!allLinks.length) {
+        alert("No links yet");
         return;
       }
-      await navigator.clipboard.writeText(links.join("\n"));
+      await navigator.clipboard.writeText(allLinks.join("\n"));
       alert("All links copied");
     });
   </script>
